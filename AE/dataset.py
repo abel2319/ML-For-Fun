@@ -1,6 +1,7 @@
 import torch
 import torchvision
 from torchvision import transforms
+import pyexr
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, data_dir='data', train=True, transform=None):
@@ -15,7 +16,7 @@ class Dataset(torch.utils.data.Dataset):
 
         train_data, val_data = super().random_split(train_dataset, [int(size - size * 0.2), int(size * 0.2)])
 
-        batch_size = 256
+        batch_size = 1
 
         train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
         valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
