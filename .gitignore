@@ -1,1 +1,9 @@
+**/data/
+**/dataset/
+**/tiny-imagenet-200/
+
 Residual_U-Net/data/
+AutoEncoder/data/
+AutoEncoder/dataset/
+AutoEncoder/tiny-imagenet-200/
+CNN-multiclasses-classification/cassava-disease
