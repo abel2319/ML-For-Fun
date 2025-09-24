@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import Dataset
+from torchvision import transforms
 import OpenImageIO as oiio
 import pyexr
 import numpy as np
@@ -7,6 +8,23 @@ import os
 from glob import glob
 import random
 from sklearn.model_selection import train_test_split
+
+def normalize_hdr_image(image, method='reinhard'):
+    """
+    Normalize HDR images to [0, 1] range
+    """
+    if method == 'reinhard':
+        # Reinhard tone mapping: I_out = I_in / (I_in + 1)
+        return np.clip(image / (image + 1.0), 0.0, 1.0)
+    elif method == 'clip':
+        # Simple clipping
+        return np.clip(image, 0.0, 1.0)
+    elif method == 'percentile':
+        # Percentile-based normalization
+        p99 = np.percentile(image, 99)
+        return np.clip(image / (p99 + 1e-8), 0.0, 1.0)
+    else:
+        raise ValueError(f"Unknown normalization method: {method}")
 
 def create_train_val_datasets(
     data_folder,
@@ -34,13 +52,15 @@ def create_train_val_datasets(
     train_dataset = EXRDenoiseDataset(
         train_samples,
         exposure_match=exposure_match,
-        transform=transform
+        transform=transform,
+        normalize_method='clip'
     )
 
     val_dataset = EXRDenoiseDataset(
         val_samples,
         exposure_match=exposure_match,
-        transform=None  # Usually no augmentation on val
+        transform=None,  # Usually no augmentation on val
+        normalize_method='clip'
     )
 
     print(f"Dataset split: {len(train_samples)} train, {len(val_samples)} val")
@@ -117,7 +137,7 @@ def random_crop_flip(input_img, target_img, crop_size=256):
 
 
 class EXRDenoiseDataset(Dataset):
-    def __init__(self, samples, exposure_match=True, transform=None, epsilon=1e-2):
+    def __init__(self, samples, exposure_match=True, transform=None, epsilon=1e-2, normalize_method='reinhard'):
         """
         samples: list of dicts with keys: noisy, clean, normal, albedo
         exposure_match: whether to divide input by albedo
@@ -127,6 +147,7 @@ class EXRDenoiseDataset(Dataset):
         self.exposure_match = exposure_match
         self.transform = transform
         self.epsilon = epsilon
+        self.normalize_method = normalize_method
 
     def __len__(self):
         return len(self.samples)
@@ -136,7 +157,10 @@ class EXRDenoiseDataset(Dataset):
         load_num_channels = min(input.spec().nchannels, 3)
         image = input.read_image(subimage=0, miplevel=0, chbegin=0, chend=load_num_channels, format=oiio.FLOAT)
         input.close()
+        #print(image.shape)
+        image = np.resize(image, (720, 720, 3))
         #img = oiio.ImageInput.open(path) #iio.imread(path, extension=".exr")  # shape: (H, W, 3)
+        image = normalize_hdr_image(image, method=self.normalize_method)
         return image #img.astype(np.float32)
 
     def __getitem__(self, idx):
@@ -147,17 +171,6 @@ class EXRDenoiseDataset(Dataset):
         normal = self.load_exr(sample['normal'])   # (H, W, 3)
         albedo = self.load_exr(sample['albedo'])   # (H, W, 3)
 
-        if noisy.shape != clean.shape:
-            clean = np.resize(clean, noisy.shape)
-            clean = np.nan_to_num(clean)
-        
-        if noisy.shape != albedo.shape:
-            albedo = np.resize(albedo, noisy.shape)
-            albedo = np.nan_to_num(albedo)
-        
-        if noisy.shape != normal.shape:
-            normal = np.resize(normal, noisy.shape)
-            normal = np.nan_to_num(normal)
         
         if self.exposure_match:
             # Avoid division by zero with epsilon

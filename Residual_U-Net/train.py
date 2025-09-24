@@ -3,6 +3,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import os
 import matplotlib.pyplot as plt
+from loss import EnhancedDenoisingLoss, SimpleDenoisingLoss
+
 
 def train(
     model,
@@ -22,7 +24,9 @@ def train(
 
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    criterion = torch.nn.L1Loss()
+
+    criterion = SimpleDenoisingLoss(l1_weight=1.0,
+                                      ssim_weight=0.3) #torch.nn.L1Loss()
 
     train_losses = []
     val_losses = []
@@ -54,12 +58,13 @@ def train(
             model.eval()
             val_loss = 0.0
             with torch.no_grad():
-                for val_inputs, val_targets in val_loader:
+                for val_inputs, val_targets in tqdm(val_loader, desc='Validation'):
                     val_inputs = val_inputs.to(device)
                     val_targets = val_targets.to(device)
 
                     val_outputs = model(val_inputs)
-                    val_loss += criterion(val_outputs, val_targets).item()
+                    _val_loss= criterion(val_outputs, val_targets)
+                    val_loss = _val_loss.item()
             avg_val_loss = val_loss / len(val_loader)
             val_losses.append(avg_val_loss)
             print(f"Epoch {epoch+1} validation loss: {avg_val_loss:.6f}")

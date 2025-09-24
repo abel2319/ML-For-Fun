@@ -64,9 +64,9 @@ class UpBlock(nn.Module):
         x = self.up(x)
         #print(x.shape, skip.shape)
         
-        if x.shape[2:] != skip.shape[2:]:
-            skip = skip[:, :, :x.shape[2], :x.shape[3]]
-            print(skip.shape)
+        #if x.shape[2:] != skip.shape[2:]:
+        #    skip = skip[:, :, :x.shape[2], :x.shape[3]]
+        #    print(skip.shape)
         
         x = torch.cat([x, skip], dim=1)
         x = self.conv(x)

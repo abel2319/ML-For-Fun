@@ -3,6 +3,7 @@
 **/tiny-imagenet-200/
 
 Residual_U-Net/data/
+Residual_U-Net/checkpoints/
 AutoEncoder/data/
 AutoEncoder/dataset/
 AutoEncoder/tiny-imagenet-200/

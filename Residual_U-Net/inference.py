@@ -3,6 +3,7 @@ import os
 import torch
 import numpy as np
 import imageio.v3 as iio
+import OpenImageIO as oiio
 from glob import glob
 from tqdm import tqdm
 from skimage.metrics import structural_similarity as ssim_score
@@ -29,11 +30,59 @@ def parse_args():
     return parser.parse_args()
 
 def load_exr(path):
-    return iio.imread(path, extension=".exr").astype(np.float32)
+    input = oiio.ImageInput.open(path)
+    load_num_channels = min(input.spec().nchannels, 3)
+    image = input.read_image(subimage=0, miplevel=0, chbegin=0, chend=load_num_channels, format=oiio.FLOAT)
+    input.close()
+    #print(image.shape)
+    image = np.resize(image, (720, 720, 3))
+    #img = oiio.ImageInput.open(path) #iio.imread(path, extension=".exr")  # shape: (H, W, 3)
+    image = np.clip(image / (image + 1.0), 0.0, 1.0)
+    return image
 
-def save_exr(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    iio.imwrite(path, data, extension=".exr")
+def save_exr_(path, image):
+    #os.makedirs(os.path.dirname(path), exist_ok=True)
+    #iio.imwrite(path, data, extension=".exr")
+
+    ext =  'png' #'exr' #
+    output = oiio.ImageOutput.create(path)
+    if not output:
+      raise RuntimeError('could not create image: "' + path + '"')
+    format = oiio.FLOAT if ext == 'exr' else oiio.UINT8
+    spec = oiio.ImageSpec(image.shape[1], image.shape[0], image.shape[2], format)
+    if ext == 'exr':
+      spec.attribute('compression', 'piz')
+    elif ext == 'png':
+      spec.attribute('png:compressionLevel', 3)
+    if not output.open(path, spec):
+      raise RuntimeError('could not open image: "' + path + '"')
+    # FIXME: copy is needed for arrays owned by PyTorch for some reason
+    if not output.write_image(image.copy()):
+      raise RuntimeError('could not save image')
+    output.close()
+
+def save_exr(path, image):
+    # Ensure image is in valid range
+    image = np.clip(image, 0.0, 1.0)
+    
+    ext = 'png'
+    output = oiio.ImageOutput.create(path)
+    if not output:
+        raise RuntimeError('could not create image: "' + path + '"')
+    
+    format = oiio.UINT8  # For PNG output
+    spec = oiio.ImageSpec(image.shape[1], image.shape[0], image.shape[2], format)
+    spec.attribute('png:compressionLevel', 3)
+    
+    if not output.open(path, spec):
+        raise RuntimeError('could not open image: "' + path + '"')
+    
+    # Convert to 0-255 range for PNG
+    image_uint8 = (image * 255).astype(np.uint8)
+    
+    if not output.write_image(image_uint8.copy()):
+        raise RuntimeError('could not save image')
+    output.close()
 
 def inference(args):
     device = torch.device(args.device)
@@ -58,7 +107,7 @@ def inference(args):
         normal = load_exr(sample['normal'])
         clean = load_exr(sample['clean']) if 'clean' in sample else None
 
-        inv_albedo = 1.0 / (albedo + args.epsilon)
+        inv_albedo =  1.0 / (albedo + args.epsilon)
         model_input = noisy * inv_albedo
         model_input = np.concatenate([model_input, normal, albedo], axis=-1)
         input_tensor = torch.from_numpy(model_input).permute(2, 0, 1).unsqueeze(0).to(device)
@@ -66,10 +115,10 @@ def inference(args):
         with torch.no_grad():
             denoised_reflectance = model(input_tensor)[0].cpu().permute(1, 2, 0).numpy()
 
-        denoised = np.clip(denoised_reflectance * albedo, 0.0, 1.0)
+        denoised =  np.clip(denoised_reflectance * albedo, 0.0, 1.0) #np.clip(denoised_reflectance, 0.0, 1.0) #denoised_reflectance #
 
         # Save EXR
-        filename = os.path.basename(sample['noisy']).replace("_noisy.exr", "_denoised.exr")
+        filename = os.path.basename(sample['noisy']).replace(".hdr.exr", "_denoised.png")
         save_path = os.path.join(args.output_folder, filename)
         save_exr(save_path, denoised)
 
