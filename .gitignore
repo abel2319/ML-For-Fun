@@ -4,6 +4,7 @@
 
 Residual_U-Net/data/
 Residual_U-Net/checkpoints/
+Residual_U-Net/inference/
 AutoEncoder/data/
 AutoEncoder/dataset/
 AutoEncoder/tiny-imagenet-200/
